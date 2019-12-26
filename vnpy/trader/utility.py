@@ -231,12 +231,14 @@ class BarGenerator:
         """
         # If not inited, creaate window bar object
         if not self.window_bar:
+            print("初始化")
             # Generate timestamp for bar data
             if self.interval == Interval.MINUTE:
                 dt = bar.datetime.replace(second=0, microsecond=0)
-            else:
+            elif self.interval == Interval.HOUR:
                 dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
-
+            elif self.interval == Interval.DAILY:
+                dt = bar.datetime.replace(hour=0,minute=0, second=0, microsecond=0)
             self.window_bar = BarData(
                 symbol=bar.symbol,
                 exchange=bar.exchange,
@@ -244,46 +246,81 @@ class BarGenerator:
                 gateway_name=bar.gateway_name,
                 open_price=bar.open_price,
                 high_price=bar.high_price,
-                low_price=bar.low_price
+                low_price=bar.low_price,
+                close_price=bar.close_price,
+                volume=int(bar.volume),
+                open_interest=bar.open_interest,
+
             )
+
+            # Check if window bar completed
+            self.interval_Day=0
+            self.LastDay=self.window_bar
+
         # Otherwise, update high/low price into window bar
-        else:
+        elif  (self.interval == Interval.MINUTE or self.interval == Interval.HOUR):
+            finished=False
             self.window_bar.high_price = max(
                 self.window_bar.high_price, bar.high_price)
             self.window_bar.low_price = min(
                 self.window_bar.low_price, bar.low_price)
-
-        # Update close price/volume into window bar
-        self.window_bar.close_price = bar.close_price
-        self.window_bar.volume += int(bar.volume)
-        self.window_bar.open_interest = bar.open_interest
-
-        # Check if window bar completed
-        finished = False
-
-        if self.interval == Interval.MINUTE:
-            # x-minute bar
-            if not (bar.datetime.minute + 1) % self.window:
-                finished = True
-        elif self.interval == Interval.HOUR:
-            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
-                # 1-hour bar
-                if self.window == 1:
+            # Update close price/volume into window bar
+            self.window_bar.close_price = bar.close_price
+            self.window_bar.volume += int(bar.volume)
+            self.window_bar.open_interest = bar.open_interest
+            if self.interval == Interval.MINUTE:
+                # x-minute bar
+                if not (bar.datetime.minute + 1) % self.window:
                     finished = True
-                # x-hour bar
-                else:
-                    self.interval_count += 1
-
-                    if not self.interval_count % self.window:
+            elif self.interval == Interval.HOUR:
+                if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                    # 1-hour bar
+                    if self.window == 1:
                         finished = True
-                        self.interval_count = 0
+                    # x-hour bar
+                    else:
+                        self.interval_count += 1
 
-        if finished:
-            self.on_window_bar(self.window_bar)
-            self.window_bar = None
+                        if not self.interval_count % self.window:
+                            finished = True
+                            self.interval_count = 0
 
-        # Cache last bar object
-        self.last_bar = bar
+            if finished:
+                self.on_window_bar(self.window_bar)
+                self.window_bar = None
+            # Cache last bar object
+            self.last_bar = bar
+        elif  self.interval == Interval.DAILY:
+                if self.LastDay.datetime.day!=bar.datetime.day:      #日期变动
+                    self.interval_Day=self.interval_Day+1
+                    self.LastDay=bar
+                if self.interval_Day>=self.window:
+                      self.interval_Day=0
+                      self.on_window_bar(self.window_bar)     #存bar
+                      print(self.window_bar.high_price," ",self.window_bar.low_price)
+                      self.window_bar = BarData(
+                      symbol=bar.symbol,
+                      exchange=bar.exchange,
+                      datetime=bar.datetime.replace(hour=0,minute=0, second=0, microsecond=0),
+                      gateway_name=bar.gateway_name,
+                      open_price=bar.open_price,
+                      high_price=bar.high_price,
+                      low_price=bar.low_price,
+                      close_price = bar.close_price,
+                      volume = int(bar.volume),
+                      open_interest=bar.open_interest
+                      )
+                      self.LastDay=self.window_bar
+                else:
+                # Check if window bar completed
+                          self.window_bar.high_price = max(
+                                        self.window_bar.high_price, bar.high_price)
+                          self.window_bar.low_price = min(
+                                        self.window_bar.low_price, bar.low_price)
+                          self.window_bar.close_price = bar.close_price
+                          self.window_bar.volume += int(bar.volume)
+                          self.window_bar.open_interest = bar.open_interest
+
 
     def generate(self):
         """
@@ -379,119 +416,11 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def kama(self, n, array=False):
-        """
-        KAMA.
-        """
-        result = talib.KAMA(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def wma(self, n, array=False):
-        """
-        WMA.
-        """
-        result = talib.WMA(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def apo(self, n, array=False):
-        """
-        APO.
-        """
-        result = talib.APO(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def cmo(self, n, array=False):
-        """
-        CMO.
-        """
-        result = talib.CMO(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def mom(self, n, array=False):
-        """
-        MOM.
-        """
-        result = talib.MOM(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def ppo(self, n, array=False):
-        """
-        PPO.
-        """
-        result = talib.PPO(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def roc(self, n, array=False):
-        """
-        ROC.
-        """
-        result = talib.ROC(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def rocr(self, n, array=False):
-        """
-        ROCR.
-        """
-        result = talib.ROCR(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def rocp(self, n, array=False):
-        """
-        ROCP.
-        """
-        result = talib.ROCP(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def rocr_100(self, n, array=False):
-        """
-        ROCR100.
-        """
-        result = talib.ROCR100(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def trix(self, n, array=False):
-        """
-        TRIX.
-        """
-        result = talib.TRIX(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
     def std(self, n, array=False):
         """
-        Standard deviation.
+        Standard deviation
         """
         result = talib.STDDEV(self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def obv(self, n, array=False):
-        """
-        OBV.
-        """
-        result = talib.OBV(self.close, self.volume)
         if array:
             return result
         return result[-1]
@@ -510,15 +439,6 @@ class ArrayManager(object):
         Average True Range (ATR).
         """
         result = talib.ATR(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def natr(self, n, array=False):
-        """
-        NATR.
-        """
-        result = talib.NATR(self.high, self.low, self.close, n)
         if array:
             return result
         return result[-1]
@@ -548,69 +468,6 @@ class ArrayManager(object):
         ADX.
         """
         result = talib.ADX(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def adxr(self, n, array=False):
-        """
-        ADXR.
-        """
-        result = talib.ADXR(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def dx(self, n, array=False):
-        """
-        DX.
-        """
-        result = talib.DX(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def minus_di(self, n, array=False):
-        """
-        MINUS_DI.
-        """
-        result = talib.MINUS_DI(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def plus_di(self, n, array=False):
-        """
-        PLUS_DI.
-        """
-        result = talib.PLUS_DI(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def willr(self, n, array=False):
-        """
-        WILLR.
-        """
-        result = talib.WILLR(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
-
-    def ultosc(self, array=False):
-        """
-        Ultimate Oscillator.
-        """
-        result = talib.ULTOSC(self.high, self.low, self.close)
-        if array:
-            return result
-        return result[-1]
-
-    def trange(self, array=False):
-        """
-        TRANGE.
-        """
-        result = talib.TRANGE(self.high, self.low, self.close)
         if array:
             return result
         return result[-1]
@@ -670,22 +527,11 @@ class ArrayManager(object):
             return result
         return result[-1]
 
-    def minus_dm(self, n, array=False):
+    def ultosc(self, array=False):
         """
-        MINUS_DM.
+        Ultimate Oscillator.
         """
-        result = talib.MINUS_DM(self.high, self.low, n)
-
-        if array:
-            return result
-        return result[-1]
-
-    def plus_dm(self, n, array=False):
-        """
-        PLUS_DM.
-        """
-        result = talib.PLUS_DM(self.high, self.low, n)
-
+        result = talib.ULTOSC(self.high, self.low, self.close)
         if array:
             return result
         return result[-1]
@@ -695,31 +541,6 @@ class ArrayManager(object):
         Money Flow Index.
         """
         result = talib.MFI(self.high, self.low, self.close, self.volume, n)
-        if array:
-            return result
-        return result[-1]
-
-    def ad(self, n, array=False):
-        """
-        AD.
-        """
-        result = talib.AD(self.high, self.low, self.close, self.volume, n)
-        if array:
-            return result
-        return result[-1]
-
-    def adosc(self, n, array=False):
-        """
-        ADOSC.
-        """
-        result = talib.ADOSC(self.high, self.low, self.close, self.volume, n)
-        if array:
-            return result
-        return result[-1]
-
-    def bop(self, array=False):
-        result = talib.BOP(self.open, self.high, self.low, self.close)
-
         if array:
             return result
         return result[-1]
